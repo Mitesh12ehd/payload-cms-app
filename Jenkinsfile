@@ -59,16 +59,20 @@ pipeline {
               set -e
               for HOST in ${APP1_HOST} ${APP2_HOST}; do
                 echo "Deploying to $HOST"
-                ssh -o StrictHostKeyChecking=no ${SSH_USER}@$HOST "\
-                  aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI} && \
-                  docker pull ${ECR_URI}:${IMAGE_TAG} && \
-                  docker stop payload-cms || true && \
-                  docker rm payload-cms || true && \
-                  docker run -d --name payload-cms --restart unless-stopped \
-                    -p 3000:3000 \
-                    --env-file /home/ec2-user/app.env \
-                    ${ECR_URI}:${IMAGE_TAG} && \
-                  docker image prune -f"
+
+                printf 'DATABASE_URL=%s\nPAYLOAD_SECRET=%s\nNODE_ENV=production\n' \
+                  "$DATABASE_URL" "$PAYLOAD_SECRET" \
+                | ssh -o StrictHostKeyChecking=no ${SSH_USER}@$HOST "
+                    set -e
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
+                    docker pull ${ECR_URI}:${IMAGE_TAG}
+                    docker rm -f payload-cms || true
+                    docker run -d --name payload-cms --restart unless-stopped \
+                      -p 3000:3000 \
+                      --env-file /dev/stdin \
+                      ${ECR_URI}:${IMAGE_TAG}
+                    docker image prune -f
+                  "
               done
             '''
           }
@@ -80,8 +84,10 @@ pipeline {
       steps {
         sh '''
           sleep 20
-          curl -fsS -o /dev/null -w "%{http_code}\n" http://${APP1_HOST}:3000/admin || true
-          curl -fsS -o /dev/null -w "%{http_code}\n" http://${APP2_HOST}:3000/admin || true
+          for HOST in ${APP1_HOST} ${APP2_HOST}; do
+            echo "Checking $HOST"
+            curl -fsS -o /dev/null -w "%{http_code}\n" http://$HOST:3000/admin
+          done
         '''
       }
     }
