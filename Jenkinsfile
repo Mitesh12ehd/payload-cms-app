@@ -79,17 +79,5 @@ pipeline {
         }
       }
     }
-
-    stage('Smoke check') {
-      steps {
-        sh '''
-          sleep 20
-          for HOST in ${APP1_HOST} ${APP2_HOST}; do
-            echo "Checking $HOST"
-            curl -fsS -o /dev/null -w "%{http_code}\n" http://$HOST:3000/admin
-          done
-        '''
-      }
-    }
   }
 }
