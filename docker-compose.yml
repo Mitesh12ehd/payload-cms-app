@@ -1,0 +1,9 @@
+services:
+  payload:
+    image: ${IMAGE:-payload-cms-app:local}
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET}
+    restart: unless-stopped
