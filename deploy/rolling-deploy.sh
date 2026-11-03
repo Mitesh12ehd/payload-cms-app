@@ -18,7 +18,17 @@ instance_id() {
 register()   { aws elbv2 register-targets   --target-group-arn "$TARGET_GROUP_ARN" --targets "Id=$1"
                aws elbv2 wait target-in-service --target-group-arn "$TARGET_GROUP_ARN" --targets "Id=$1"; }
 deregister() { aws elbv2 deregister-targets --target-group-arn "$TARGET_GROUP_ARN" --targets "Id=$1"
-               aws elbv2 wait target-deregistration --target-group-arn "$TARGET_GROUP_ARN" --targets "Id=$1"; }
+               aws elbv2 wait target-deregistered --target-group-arn "$TARGET_GROUP_ARN" --targets "Id=$1"; }
+
+DRAINED=""
+cleanup() {
+  rc=$?
+  if [ $rc -ne 0 ] && [ -n "$DRAINED" ]; then
+    echo "!!! script failed while $DRAINED was drained - re-registering it"
+    aws elbv2 register-targets --target-group-arn "$TARGET_GROUP_ARN" --targets "Id=$DRAINED" || true
+  fi
+}
+trap cleanup EXIT
 
 for HOST in $APP_HOSTS; do
   IID=$(instance_id "$HOST")
@@ -32,6 +42,7 @@ for HOST in $APP_HOSTS; do
   fi
 
   echo "-> draining from ALB"
+  DRAINED="$IID"
   deregister "$IID"
 
   echo "-> deploying $IMAGE_TAG"
@@ -46,6 +57,7 @@ for HOST in $APP_HOSTS; do
 
   echo "-> registering back to ALB"
   register "$IID"
+  DRAINED=""
   echo "=== $HOST done ==="
 done
 
